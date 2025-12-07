@@ -1,0 +1,231 @@
+import 'package:flutter/material.dart';
+import '../services/Auth_servies.dart';
+import 'register_screens.dart';
+import 'home_screens.dart';
+
+class LoginScreen extends StatefulWidget {
+  const LoginScreen({super.key});
+
+  @override
+  State<LoginScreen> createState() => _LoginScreenState();
+}
+
+class _LoginScreenState extends State<LoginScreen> {
+  final AuthServices authServices = AuthServices();
+  final _formKey = GlobalKey<FormState>();
+  final TextEditingController emailController = TextEditingController();
+  final TextEditingController passwordController = TextEditingController();
+  bool isLoading = false;
+  bool isPasswordVisible = false;
+
+  static const Color primary = Color(0xFF0B1B3A);
+  static const Color accent = Color(0xFF00C2A8);
+
+  @override
+  void dispose() {
+    emailController.dispose();
+    passwordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> login() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    setState(() => isLoading = true);
+
+    try {
+      final cred = await authServices.signInWithEmail(
+        emailController.text.trim(),
+        passwordController.text.trim(),
+      );
+
+      if (cred?.user != null) {
+        final role = await authServices.getCurrentUserRole() ?? 'user';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('✅ Login Successful! Welcome $role'),
+            backgroundColor: accent,
+          ),
+        );
+
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => HomeScreen(role: role)),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('❌ Login Failed! Check your credentials.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('❌ Login Failed: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      setState(() => isLoading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: primary,
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              children: [
+                const SizedBox(height: 50),
+                Container(
+                  width: 100,
+                  height: 100,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: accent.withOpacity(0.15),
+                    border: Border.all(color: accent, width: 2),
+                  ),
+                  child: Icon(Icons.login, size: 50, color: accent),
+                ),
+                const SizedBox(height: 20),
+                const Text(
+                  'Recora',
+                  style: TextStyle(
+                    fontSize: 34,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  'Login to your account',
+                  style: TextStyle(color: Colors.white.withOpacity(0.75)),
+                ),
+                const SizedBox(height: 40),
+
+                TextFormField(
+                  controller: emailController,
+                  keyboardType: TextInputType.emailAddress,
+                  validator: (v) {
+                    if (v == null || v.isEmpty) return 'Email is required';
+                    if (!v.contains('@')) return 'Enter a valid email';
+                    return null;
+                  },
+                  style: const TextStyle(color: Colors.white),
+                  decoration: InputDecoration(
+                    labelText: 'Email',
+                    labelStyle: TextStyle(color: Colors.white.withOpacity(0.85)),
+                    prefixIcon: Icon(Icons.email, color: accent),
+                    filled: true,
+                    fillColor: Colors.white.withOpacity(0.08),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(color: Colors.white.withOpacity(0.2)),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: accent, width: 2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                TextFormField(
+                  controller: passwordController,
+                  obscureText: !isPasswordVisible,
+                  validator: (v) {
+                    if (v == null || v.isEmpty) return 'Password is required';
+                    if (v.length < 6) return 'Minimum 6 characters';
+                    return null;
+                  },
+                  style: const TextStyle(color: Colors.white),
+                  decoration: InputDecoration(
+                    labelText: 'Password',
+                    labelStyle: TextStyle(color: Colors.white.withOpacity(0.85)),
+                    prefixIcon: Icon(Icons.lock, color: accent),
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        isPasswordVisible ? Icons.visibility : Icons.visibility_off,
+                        color: accent.withOpacity(0.7),
+                      ),
+                      onPressed: () {
+                        setState(() {
+                          isPasswordVisible = !isPasswordVisible;
+                        });
+                      },
+                    ),
+                    filled: true,
+                    fillColor: Colors.white.withOpacity(0.08),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(color: Colors.white.withOpacity(0.2)),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: accent, width: 2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 30),
+
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: isLoading
+                      ? const Center(child: CircularProgressIndicator(color: accent))
+                      : ElevatedButton(
+                    onPressed: login,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: accent,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: const Text(
+                      'Login',
+                      style: TextStyle(
+                        color: primary,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 18,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      "Don't have an account? ",
+                      style: TextStyle(color: Colors.white.withOpacity(0.7)),
+                    ),
+                    TextButton(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const RegisterScreen()),
+                        );
+                      },
+                      child: Text(
+                        "Register",
+                        style: TextStyle(color: accent, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}

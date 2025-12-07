@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "610962856473",
+    "project_id": "recordkeeping-2e097",
+    "storage_bucket": "recordkeeping-2e097.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:610962856473:android:fa94a7f5e79c08e9722888",
+        "android_client_info": {
+          "package_name": "com.example.biling_invoice_generator"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA_EQN6pX-hj9DoAKnq9eykrNWJ_WSEJ04"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
