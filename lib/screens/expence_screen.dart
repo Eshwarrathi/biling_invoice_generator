@@ -224,7 +224,7 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
           Row(
             children: [
               const Text("💾", style: TextStyle(color: Colors.white)),
-              Switch(value: useFirebase, onChanged: (v) { setState(() => useFirebase = v); _loadExpenses(); }, activeColor: Colors.white),
+              Switch(value: useFirebase, onChanged: (v) { setState(() => useFirebase = v); _loadExpenses(); }, activeThumbColor: Colors.white),
               const Text("☁️", style: TextStyle(color: Colors.white)),
               const SizedBox(width: 8),
             ],

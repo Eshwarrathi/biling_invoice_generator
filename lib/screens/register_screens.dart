@@ -61,22 +61,47 @@ class _RegisterScreenState extends State<RegisterScreen> {
       passwordController.text.trim(),
       role: selectedRole,
     );
-    setState(() => isLoading = false);
-    if (cred != null) {
-      // Get role from Firestore / Hive for consistency
-      final role = await authServices.getCurrentUserRole();
 
+    setState(() => isLoading = false);
+
+    if (cred != null) {
+      // ✅ Show email verification message with option to resend
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('✅ Registration Successful! Role: ${role.toUpperCase()}'),
+          content: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('✅ Registration Successful!'),
+              SizedBox(height: 5),
+              Text('Please check your email to verify your account.', style: TextStyle(fontSize: 12)),
+            ],
+          ),
           backgroundColor: accent,
+          duration: Duration(seconds: 6),
+          action: SnackBarAction(
+            label: 'Resend Email',
+            textColor: Colors.white,
+            onPressed: () {
+              cred.user?.sendEmailVerification();
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('📧 Verification email resent!'),
+                  backgroundColor: Colors.green,
+                ),
+              );
+            },
+          ),
         ),
       );
 
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => HomeScreen(role: role)),
-      );
+      // ✅ Go to login screen after delay
+      Future.delayed(Duration(seconds: 2), () {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => LoginScreen()),
+        );
+      });
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -235,7 +260,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16.0),
                     child: DropdownButtonFormField<String>(
-                      value: selectedRole,
+                      initialValue: selectedRole,
                       dropdownColor: primary,
                       icon: Icon(Icons.arrow_drop_down, color: accent),
                       decoration: InputDecoration(

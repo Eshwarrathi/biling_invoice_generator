@@ -241,7 +241,7 @@ class _CreditDebitScreenState extends State<CreditDebitScreen> {
               Switch(
                 value: useFirebase,
                 onChanged: (v) { setState(() => useFirebase = v); _loadRecords(); },
-                activeColor: Colors.white,
+                activeThumbColor: Colors.white,
               ),
               const Text("☁️", style: TextStyle(color: Colors.white)),
               const SizedBox(width: 10),

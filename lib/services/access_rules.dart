@@ -5,6 +5,7 @@ class AccessRules {
       'Sales',
       'Expenses',
       'HR Management',
+      'Salary',
       'Payments',
       'Credit / Debit',
       'Calculation',
@@ -22,6 +23,7 @@ class AccessRules {
       'Purchase',
       'Stock',
       'HR Management',
+      'Salary',
       'Payments',
       'Dashboard',
     ],
@@ -33,16 +35,51 @@ class AccessRules {
       'PDF Export',
       'Dashboard',
     ],
-    'user': [   // 👈 Updated user role
+    'user': [
       'Purchase',
       'Sales',
       'Stock',
+      'Salary',
     ],
   };
 
   static bool hasAccess(String role, String screenName) {
-    return roleScreens[role]?.contains(screenName) ?? false;
+    // Check if role exists and if screen is in the role's list
+    if (roleScreens.containsKey(role)) {
+      return roleScreens[role]!.contains(screenName);
+    }
+    return false;
   }
 
   static List<String> get availableRoles => ['admin', 'cashier', 'manager', 'accountant', 'user'];
+
+  // Additional helper methods
+  static List<String> getScreensForRole(String role) {
+    return roleScreens[role] ?? [];
+  }
+
+  static bool canEdit(String role) {
+    // Define which roles have edit permissions
+    return ['admin', 'manager'].contains(role);
+  }
+
+  static bool canDelete(String role) {
+    // Define which roles have delete permissions
+    return ['admin', 'manager'].contains(role);
+  }
+
+  static bool canViewAll(String role) {
+    // Define which roles can view all records
+    return ['admin', 'manager', 'accountant'].contains(role);
+  }
+
+  static Map<String, String> getRoleDescriptions() {
+    return {
+      'admin': 'Full access to all features and data',
+      'cashier': 'Can process sales and payments only',
+      'manager': 'Can manage purchases, sales, HR, and view reports',
+      'accountant': 'Can manage finances, expenses, and generate reports',
+      'user': 'Basic access to purchase, sales, stock, and salary features',
+    };
+  }
 }

@@ -20,15 +20,15 @@ class AuthServices {
         DocumentSnapshot doc = await _firestore.collection('users').doc(user.uid).get();
         if (doc.exists && doc.data() != null) {
           Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
-          String role = data['role'] ?? 'cashier';
+          String role = data['role'] ?? 'user'; // ✅ Default changed to 'user'
           await _saveRoleToHive(role);
           return role;
         }
       }
-      return _box.get('user_role', defaultValue: 'cashier');
+      return _box.get('user_role', defaultValue: 'user'); // ✅ Default changed to 'user'
     } catch (e) {
       print('❌ Error getting role: $e');
-      return _box.get('user_role', defaultValue: 'cashier');
+      return _box.get('user_role', defaultValue: 'user'); // ✅ Default changed to 'user'
     }
   }
 
@@ -52,7 +52,7 @@ class AuthServices {
     await _box.put('user_role', role);
   }
 
-  Future<UserCredential?> signUpWithEmail(String email, String password, {String role = 'cashier'}) async {
+  Future<UserCredential?> signUpWithEmail(String email, String password, {String role = 'user'}) async { // ✅ Default changed to 'user'
     try {
       final cred = await _auth.createUserWithEmailAndPassword(email: email, password: password);
       await cred.user?.sendEmailVerification();
@@ -93,6 +93,7 @@ class AuthServices {
       print('❌ Logout error: $e');
     }
   }
+
   // ---------------- RESET PASSWORD ----------------
   Future<bool> resetPassword(String email) async {
     try {
@@ -107,5 +108,4 @@ class AuthServices {
       return false;
     }
   }
-
 }

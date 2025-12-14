@@ -92,6 +92,7 @@ class FirebaseService {
       return false;
     }
   }
+
   // ---------------- GET MY RECORDS ----------------
   static Future<List<Map<String, dynamic>>> getMyRecords(String collection) async {
     final userId = currentUserId;
@@ -103,12 +104,12 @@ class FirebaseService {
         .orderBy('createdAt', descending: true)
         .get();
 
-    return snapshot.docs.map((doc) => {'id': doc.id, ...doc.data() as Map<String, dynamic>}).toList();
+    return snapshot.docs.map((doc) => {'id': doc.id, ...doc.data()}).toList();
   }
 
   // ---------------- GET ALL RECORDS ----------------
   static Future<List<Map<String, dynamic>>> getAllRecords(String collection) async {
     final snapshot = await _firestore.collection(collection).orderBy('createdAt', descending: true).get();
-    return snapshot.docs.map((doc) => {'id': doc.id, ...doc.data() as Map<String, dynamic>}).toList();
+    return snapshot.docs.map((doc) => {'id': doc.id, ...doc.data()}).toList();
   }
 }

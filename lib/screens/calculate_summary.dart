@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/firestore_servicves.dart';
 import '../services/local_db_service.dart';
-import 'sales_screen.dart';
 
 class SummaryScreen extends StatefulWidget {
   final String currentUserId;
@@ -168,7 +167,7 @@ class _SummaryScreenState extends State<SummaryScreen> {
                   setState(() => useFirebase = val);
                   _calculateSummary();
                 },
-                activeColor: Colors.white,
+                activeThumbColor: Colors.white,
               ),
               const Text('☁️', style: TextStyle(color: Colors.white)),
               IconButton(icon: const Icon(Icons.refresh, color: Colors.white), onPressed: _calculateSummary),

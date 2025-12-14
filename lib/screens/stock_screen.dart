@@ -1,32 +1,51 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../services/stock_service.dart';
-const String currentUserId = 'USER_123';
+
 class StockScreen extends StatefulWidget {
-  final bool initialUseFirebase;
-  const StockScreen({super.key, this.initialUseFirebase = true});
+  const StockScreen({super.key});
+
   @override
   State<StockScreen> createState() => _StockScreenState();
 }
+
 class _StockScreenState extends State<StockScreen> {
   bool isLoading = true;
-  bool useFirebase = true; // mutable in state
+  bool useFirebase = true;
   List<Map<String, dynamic>> stock = [];
+
+  // ✅ Dynamic current user ID
+  String get currentUserId => FirebaseAuth.instance.currentUser?.uid ?? '';
+
   static const Color primary = Color(0xFF0B1B3A);
   static const Color accent = Color(0xFF00C2A8);
+
   @override
   void initState() {
     super.initState();
-    useFirebase = widget.initialUseFirebase; // initialize from widget
     loadStock();
   }
+
   Future<void> loadStock() async {
     setState(() => isLoading = true);
-    stock = await StockService.calculateStock(
-      useFirebase: useFirebase,
-      userId: currentUserId, // pass current user ID
-    );
-    setState(() => isLoading = false);
+    try {
+      stock = await StockService.calculateStock(
+        useFirebase: useFirebase,
+        userId: currentUserId, // ✅ Current user ID استعمال کریں
+      );
+    } catch (e) {
+      print('❌ Error loading stock: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error loading stock: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      setState(() => isLoading = false);
+    }
   }
+
   Widget _stockCard(Map<String, dynamic> s) {
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 8),
@@ -39,20 +58,24 @@ class _StockScreenState extends State<StockScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            s['item'],
+            s['item'] ?? 'Unknown Item',
             style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 8),
-          Text("Purchased: ${s['purchased']}", style: const TextStyle(color: Colors.white70)),
-          Text("Sold: ${s['sold']}", style: const TextStyle(color: Colors.white70)),
+          Text("Purchased: ${s['purchased'] ?? 0}", style: const TextStyle(color: Colors.white70)),
+          Text("Sold: ${s['sold'] ?? 0}", style: const TextStyle(color: Colors.white70)),
           Text(
-            "Remaining: ${s['remaining']}",
-            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+            "Remaining: ${s['remaining'] ?? 0}",
+            style: TextStyle(
+              color: (s['remaining'] ?? 0) <= 0 ? Colors.red : Colors.white,
+              fontWeight: FontWeight.bold,
+            ),
           ),
         ],
       ),
     );
   }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -71,7 +94,7 @@ class _StockScreenState extends State<StockScreen> {
                   setState(() => useFirebase = v);
                   loadStock();
                 },
-                activeColor: Colors.white,
+                activeThumbColor: Colors.white,
               ),
               const Text("☁️", style: TextStyle(color: Colors.white)),
               const SizedBox(width: 8),
@@ -82,9 +105,16 @@ class _StockScreenState extends State<StockScreen> {
       body: isLoading
           ? const Center(child: CircularProgressIndicator(color: Colors.white))
           : stock.isEmpty
-          ? const Center(child: Text("No stock data", style: TextStyle(color: Colors.white70)))
+          ? const Center(
+        child: Text(
+          "No stock data available",
+          style: TextStyle(color: Colors.white70, fontSize: 16),
+        ),
+      )
           : RefreshIndicator(
         onRefresh: loadStock,
+        backgroundColor: primary,
+        color: accent,
         child: ListView.builder(
           itemCount: stock.length,
           padding: const EdgeInsets.all(16),

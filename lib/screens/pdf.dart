@@ -138,7 +138,7 @@ class _PdfExportScreenState extends State<PdfExportScreen> {
               const Text("💾", style: TextStyle(color: Colors.white)),
               Switch(
                 value: useFirebase,
-                activeColor: Colors.white,
+                activeThumbColor: Colors.white,
                 onChanged: (v) {
                   setState(() => useFirebase = v);
                   _loadTotals();
@@ -162,7 +162,7 @@ class _PdfExportScreenState extends State<PdfExportScreen> {
               ),
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
               child: DropdownButtonFormField<String>(
-                value: selectedPdf,
+                initialValue: selectedPdf,
                 decoration: const InputDecoration(
                   labelText: "Select PDF Type",
                   border: InputBorder.none,

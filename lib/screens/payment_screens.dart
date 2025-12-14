@@ -45,7 +45,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
     amountController.clear();
   }
 
-  Future<void> _savePayment({Map<String, dynamic>? existing, int? index}) async {
+  Future<void> _savePayment({Map<String, dynamic>? existing}) async {
     final id = idController.text.trim();
     final receiver = receiverController.text.trim();
     final amount = amountController.text.trim();
@@ -225,7 +225,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
           Row(
             children: [
               const Text('💾', style: TextStyle(color: Colors.white)),
-              Switch(value: useFirebase, onChanged: (v) { setState(() => useFirebase = v); _loadPayments(); }, activeColor: Colors.white),
+              Switch(value: useFirebase, onChanged: (v) { setState(() => useFirebase = v); _loadPayments(); }, activeThumbColor: Colors.white),
               const Text('☁️', style: TextStyle(color: Colors.white)),
               const SizedBox(width: 8),
             ],

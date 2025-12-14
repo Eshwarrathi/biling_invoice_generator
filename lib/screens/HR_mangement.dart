@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import '../services/firestore_servicves.dart';
+import '../services/firestore_services.dart';
 import '../services/local_db_service.dart';
 import 'salary_screen.dart';
 
 class HRScreen extends StatefulWidget {
-  final String currentUserId; // logged-in user ID
+  final String currentUserId;
   const HRScreen({super.key, required this.currentUserId});
 
   @override
@@ -12,12 +12,14 @@ class HRScreen extends StatefulWidget {
 }
 
 class _HRScreenState extends State<HRScreen> {
-  List<Map<String, dynamic>> employees = [];
-  bool useFirebase = true;
-  bool isLoading = false;
+  List<Map<String, dynamic>> _employees = [];
+  bool _useFirebase = true;
+  bool _isLoading = false;
 
-  static const Color primary = Color(0xFF0D47A1);
-  static const Color accent = Color(0xFF00C2A8);
+  static const Color _primaryColor = Color(0xFF0D47A1);
+  static const Color _accentColor = Color(0xFF00C2A8);
+  static const Color _errorColor = Color(0xFFE53935);
+  static const Color _successColor = Color(0xFF4CAF50);
 
   @override
   void initState() {
@@ -25,30 +27,146 @@ class _HRScreenState extends State<HRScreen> {
     _loadEmployees();
   }
 
+  // ==================== DATA LOADING ====================
   Future<void> _loadEmployees() async {
-    setState(() => isLoading = true);
+    if (mounted) {
+      setState(() => _isLoading = true);
+    }
+
     try {
       List<Map<String, dynamic>> data = [];
-      if (useFirebase) {
+
+      if (_useFirebase) {
         data = await FirebaseService.getAllRecords('employees');
       } else {
-        final local = LocalDBService.getAllRecords('employees');
-        data = local.map((e) => Map<String, dynamic>.from(e)).toList();
+        final localRecords = LocalDBService.getAllRecords('employees');
+        data = localRecords.map((e) => Map<String, dynamic>.from(e)).toList();
       }
 
-      // Filter employees by current user
+      // Filter by current user
       data = data.where((e) => e['userId'] == widget.currentUserId).toList();
 
-      setState(() => employees = data);
+      // Sort by name
+      data.sort((a, b) => (a['name'] ?? '').compareTo(b['name'] ?? ''));
+
+      if (mounted) {
+        setState(() => _employees = data);
+      }
     } catch (e) {
-      debugPrint('⚠️ Error loading employees: $e');
+      _showErrorSnackBar('Failed to load employees: ${e.toString()}');
     } finally {
-      setState(() => isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
+  // ==================== EMPLOYEE OPERATIONS ====================
+  Future<void> _saveEmployee({
+    String? id,
+    int? index,
+    Map<String, dynamic>? record,
+  }) async {
+    // Get controllers from the dialog context
+    final nameController = TextEditingController(text: record?['name'] ?? '');
+    final phoneController = TextEditingController(text: record?['phone'] ?? '');
+    final positionController = TextEditingController(text: record?['position'] ?? '');
+    final salaryController = TextEditingController(text: record?['salary']?.toString() ?? '');
+    final dobController = TextEditingController(text: record?['dob'] ?? '');
+    final joiningController = TextEditingController(text: record?['joiningDate'] ?? '');
+    final employeeIdController = TextEditingController(
+      text: record?['employeeId'] ?? DateTime.now().millisecondsSinceEpoch.toString().substring(7),
+    );
+
+    // Validate inputs
+    if (nameController.text.trim().isEmpty) {
+      _showErrorSnackBar('Employee name is required!');
+      return;
+    }
+
+    if (salaryController.text.trim().isEmpty) {
+      _showErrorSnackBar('Salary is required!');
+      return;
+    }
+
+    final salary = double.tryParse(salaryController.text);
+    if (salary == null || salary <= 0) {
+      _showErrorSnackBar('Please enter a valid salary amount!');
+      return;
+    }
+
+    // Prepare record
+    final recordData = {
+      'userId': widget.currentUserId,
+      'employeeId': employeeIdController.text.trim(),
+      'name': nameController.text.trim(),
+      'phone': phoneController.text.trim(),
+      'position': positionController.text.trim(),
+      'salary': salary,
+      'dob': dobController.text.trim(),
+      'joiningDate': joiningController.text.trim(),
+      'createdAt': record?['createdAt'] ?? DateTime.now().toIso8601String(),
+      'updatedAt': DateTime.now().toIso8601String(),
+    };
+
+    try {
+      if (id != null && id.isNotEmpty) {
+        // Update existing record
+        if (_useFirebase) {
+          await FirebaseService.updateRecord('employees', id, recordData);
+        }
+        if (index != null) {
+          await LocalDBService.updateRecord('employees', index, recordData);
+        }
+      } else {
+        // Add new record
+        if (_useFirebase) {
+          await FirebaseService.addRecord('employees', recordData);
+        }
+        await LocalDBService.saveRecord('employees', recordData);
+      }
+
+      Navigator.pop(context);
+      await _loadEmployees();
+
+      _showSuccessSnackBar(
+        id == null ? 'Employee added successfully!' : 'Employee updated successfully!',
+      );
+    } catch (e) {
+      _showErrorSnackBar('Failed to save employee: ${e.toString()}');
+    }
+  }
+
+  Future<void> _deleteEmployee(Map<String, dynamic> record, int index) async {
+    final confirmed = await _showConfirmationDialog(
+      title: 'Delete Employee',
+      message: 'Are you sure you want to delete "${record['name']}"?',
+      confirmText: 'Delete',
+      confirmColor: _errorColor,
+    );
+
+    if (!confirmed) return;
+
+    try {
+      if (_useFirebase && record['id'] != null) {
+        await FirebaseService.deleteRecord('employees', record['id']);
+      }
+      await LocalDBService.deleteRecord('employees', index);
+      await _loadEmployees();
+      _showSuccessSnackBar('Employee deleted successfully!');
+    } catch (e) {
+      _showErrorSnackBar('Failed to delete employee: ${e.toString()}');
+    }
+  }
+
+  // ==================== DIALOGS ====================
   void _showEmployeeDialog({Map<String, dynamic>? record, int? index}) {
-    final employeeIdController = TextEditingController(text: record?['employeeId'] ?? DateTime.now().millisecondsSinceEpoch.toString());
+    final isEditing = record != null;
+
+    // Create controllers with existing data if editing
+    final employeeIdController = TextEditingController(
+      text: record?['employeeId'] ?? DateTime.now().millisecondsSinceEpoch.toString().substring(7),
+    );
     final nameController = TextEditingController(text: record?['name'] ?? '');
     final phoneController = TextEditingController(text: record?['phone'] ?? '');
     final positionController = TextEditingController(text: record?['position'] ?? '');
@@ -56,93 +174,153 @@ class _HRScreenState extends State<HRScreen> {
     final dobController = TextEditingController(text: record?['dob'] ?? '');
     final joiningController = TextEditingController(text: record?['joiningDate'] ?? '');
 
-    final isEditing = record != null;
-
     showDialog(
       context: context,
       builder: (_) => Dialog(
         backgroundColor: Colors.transparent,
         insetPadding: const EdgeInsets.all(20),
-        child: Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(colors: [primary, accent], begin: Alignment.topLeft, end: Alignment.bottomRight),
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: SingleChildScrollView(
+        child: SingleChildScrollView(
+          child: Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [_primaryColor, _accentColor],
+              ),
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.3),
+                  blurRadius: 20,
+                  offset: const Offset(0, 10),
+                ),
+              ],
+            ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(isEditing ? '✏️ Edit Employee' : '👨‍💼 Add Employee',
-                    style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 18),
-                _buildField(employeeIdController, 'Employee ID'),
-                _buildField(nameController, 'Name'),
-                _buildField(phoneController, 'Phone', isNumber: true),
-                _buildField(positionController, 'Position'),
-                _buildField(salaryController, 'Salary', isNumber: true),
-                _buildField(dobController, 'Date of Birth', isDate: true),
-                _buildField(joiningController, 'Joining Date', isDate: true),
-                const SizedBox(height: 18),
-                ElevatedButton(
-                  onPressed: () async {
-                    if (nameController.text.isEmpty || salaryController.text.isEmpty) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('⚠️ Name and Salary are required', style: TextStyle(color: Colors.white)),
-                          backgroundColor: Colors.red,
-                        ),
-                      );
-                      return;
-                    }
-
-                    final recordData = {
-                      'userId': widget.currentUserId, // attach current user
-                      'employeeId': employeeIdController.text.trim(),
-                      'name': nameController.text.trim(),
-                      'phone': phoneController.text.trim(),
-                      'position': positionController.text.trim(),
-                      'salary': double.tryParse(salaryController.text) ?? 0.0,
-                      'dob': dobController.text.trim(),
-                      'joiningDate': joiningController.text.trim(),
-                      'createdAt': DateTime.now().toIso8601String(),
-                    };
-
-                    try {
-                      if (isEditing && record?['id'] != null) {
-                        if (useFirebase) await FirebaseService.updateRecord('employees', record!['id'], recordData);
-                        if (index != null) await LocalDBService.updateRecord('employees', index, recordData);
-                      } else {
-                        if (useFirebase) await FirebaseService.addRecord('employees', recordData);
-                        await LocalDBService.saveRecord('employees', recordData);
-                      }
-
-                      Navigator.pop(context);
-                      _loadEmployees();
-
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(isEditing ? '✅ Employee updated' : '✅ Employee added',
-                              style: const TextStyle(color: Colors.white)),
-                          backgroundColor: accent,
-                        ),
-                      );
-                    } catch (e) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('❌ Error: $e', style: const TextStyle(color: Colors.white)),
-                          backgroundColor: Colors.red,
-                        ),
-                      );
-                    }
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    foregroundColor: primary,
-                    padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 12),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                Text(
+                  isEditing ? '✏️ Edit Employee' : '👨‍💼 Add Employee',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
                   ),
-                  child: Text(isEditing ? 'Update' : 'Save', style: const TextStyle(fontWeight: FontWeight.bold)),
+                ),
+                const SizedBox(height: 20),
+
+                // Employee ID (read-only for editing)
+                _buildTextField(
+                  controller: employeeIdController,
+                  label: 'Employee ID',
+                  icon: Icons.badge,
+                  readOnly: isEditing,
+                ),
+
+                const SizedBox(height: 12),
+
+                // Name Field
+                _buildTextField(
+                  controller: nameController,
+                  label: 'Full Name *',
+                  icon: Icons.person,
+                ),
+
+                const SizedBox(height: 12),
+
+                // Phone Field
+                _buildTextField(
+                  controller: phoneController,
+                  label: 'Phone Number',
+                  icon: Icons.phone,
+                  keyboardType: TextInputType.phone,
+                ),
+
+                const SizedBox(height: 12),
+
+                // Position Field
+                _buildTextField(
+                  controller: positionController,
+                  label: 'Position',
+                  icon: Icons.work,
+                ),
+
+                const SizedBox(height: 12),
+
+                // Salary Field
+                _buildTextField(
+                  controller: salaryController,
+                  label: 'Monthly Salary *',
+                  icon: Icons.attach_money,
+                  keyboardType: TextInputType.number,
+                ),
+
+                const SizedBox(height: 12),
+
+                // Date of Birth Field
+                _buildDateField(
+                  controller: dobController,
+                  label: 'Date of Birth',
+                  icon: Icons.cake,
+                ),
+
+                const SizedBox(height: 12),
+
+                // Joining Date Field
+                _buildDateField(
+                  controller: joiningController,
+                  label: 'Joining Date',
+                  icon: Icons.date_range,
+                ),
+
+                const SizedBox(height: 24),
+
+                // Action Buttons
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.pop(context),
+                        style: OutlinedButton.styleFrom(
+                          side: const BorderSide(color: Colors.white),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: const Text(
+                          'Cancel',
+                          style: TextStyle(color: Colors.white),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () => _saveEmployee(
+                          id: record?['id'],
+                          index: index,
+                          record: record,
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: Text(
+                          isEditing ? 'Update' : 'Save',
+                          style: TextStyle(
+                            color: _primaryColor,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -152,87 +330,195 @@ class _HRScreenState extends State<HRScreen> {
     );
   }
 
-  Widget _buildField(TextEditingController c, String label, {bool isNumber = false, bool isDate = false}) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: TextField(
-        controller: c,
-        readOnly: isDate,
-        keyboardType: isNumber ? TextInputType.number : TextInputType.text,
-        style: const TextStyle(color: Colors.white),
-        decoration: InputDecoration(
-          labelText: label,
-          labelStyle: const TextStyle(color: Colors.white70),
-          filled: true,
-          fillColor: Colors.white.withOpacity(0.1),
-          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.white30)),
-          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.white)),
+  Widget _buildTextField({
+    required TextEditingController controller,
+    required String label,
+    required IconData icon,
+    TextInputType keyboardType = TextInputType.text,
+    bool readOnly = false,
+  }) {
+    return TextField(
+      controller: controller,
+      style: const TextStyle(color: Colors.white),
+      keyboardType: keyboardType,
+      readOnly: readOnly,
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: const TextStyle(color: Colors.white70),
+        prefixIcon: Icon(icon, color: Colors.white70),
+        filled: true,
+        fillColor: Colors.white.withOpacity(0.1),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Colors.white30, width: 1),
         ),
-        onTap: isDate
-            ? () async {
-          final picked = await showDatePicker(
-            context: context,
-            initialDate: DateTime.now(),
-            firstDate: DateTime(1950),
-            lastDate: DateTime(2100),
-          );
-          if (picked != null) c.text = picked.toIso8601String().split('T').first;
-        }
-            : null,
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Colors.white, width: 2),
+        ),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 14,
+        ),
       ),
     );
   }
 
-  Future<void> _deleteEmployee(Map<String, dynamic> record, int index) async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        backgroundColor: primary,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Delete Employee', style: TextStyle(color: Colors.white)),
-        content: Text('Delete "${record['name']}"?', style: const TextStyle(color: Colors.white70)),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel', style: TextStyle(color: Colors.white))),
-          ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Delete')),
-        ],
+  Widget _buildDateField({
+    required TextEditingController controller,
+    required String label,
+    required IconData icon,
+  }) {
+    return TextField(
+      controller: controller,
+      style: const TextStyle(color: Colors.white),
+      readOnly: true,
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: const TextStyle(color: Colors.white70),
+        prefixIcon: Icon(icon, color: Colors.white70),
+        filled: true,
+        fillColor: Colors.white.withOpacity(0.1),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Colors.white30, width: 1),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Colors.white, width: 2),
+        ),
+        suffixIcon: IconButton(
+          icon: const Icon(Icons.calendar_today, color: Colors.white70),
+          onPressed: () => _selectDate(context, controller),
+        ),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 14,
+        ),
       ),
+      onTap: () => _selectDate(context, controller),
+    );
+  }
+
+  Future<void> _selectDate(BuildContext context, TextEditingController controller) async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now(),
+      firstDate: DateTime(1900),
+      lastDate: DateTime(2100),
+      builder: (context, child) {
+        return Theme(
+          data: ThemeData.dark().copyWith(
+            colorScheme: const ColorScheme.dark(
+              primary: _accentColor,
+              onPrimary: Colors.white,
+              surface: _primaryColor,
+              onSurface: Colors.white,
+            ),
+            dialogBackgroundColor: _primaryColor,
+          ),
+          child: child!,
+        );
+      },
     );
 
-    if (confirm != true) return;
-
-    try {
-      if (useFirebase && record['id'] != null) await FirebaseService.deleteRecord('employees', record['id']);
-      await LocalDBService.deleteRecord('employees', index);
-      _loadEmployees();
-    } catch (e) {
-      debugPrint('⚠️ Error deleting employee: $e');
+    if (picked != null) {
+      controller.text = "${picked.year}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}";
     }
   }
 
-  Widget _employeeCard(Map<String, dynamic> record, int index) {
-    return Container(
-      margin: const EdgeInsets.symmetric(vertical: 8),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(colors: [primary, accent], begin: Alignment.topLeft, end: Alignment.bottomRight),
+  // ==================== UI COMPONENTS ====================
+  Widget _buildEmployeeCard(Map<String, dynamic> record, int index) {
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+      color: _primaryColor,
+      elevation: 4,
+      shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [BoxShadow(color: primary.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 4))],
+        side: BorderSide(color: _accentColor.withOpacity(0.3), width: 1),
       ),
       child: ListTile(
-        title: Text('${record['employeeId'] ?? '-'} | ${record['name'] ?? 'Unnamed'}',
-            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        subtitle: Text(
-          '📞 ${record['phone'] ?? '-'}\n🎂 DOB: ${record['dob'] ?? '-'}\n📅 Joined: ${record['joiningDate'] ?? '-'}\n💼 ${record['position'] ?? '-'}\n💰 Salary: PKR ${record['salary'] ?? 0}',
-          style: const TextStyle(color: Colors.white70),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 20,
+          vertical: 16,
         ),
-        isThreeLine: true,
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
+        leading: CircleAvatar(
+          backgroundColor: _accentColor.withOpacity(0.2),
+          child: Text(
+            record['name']?.toString().substring(0, 1).toUpperCase() ?? 'E',
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+        title: Text(
+          record['name']?.toString() ?? 'Unnamed Employee',
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+            fontSize: 16,
+          ),
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            IconButton(icon: const Icon(Icons.edit, color: Colors.white), onPressed: () => _showEmployeeDialog(record: record, index: index)),
-            IconButton(icon: const Icon(Icons.delete, color: Colors.redAccent), onPressed: () => _deleteEmployee(record, index)),
+            const SizedBox(height: 4),
+            Text(
+              'ID: ${record['employeeId']} | ${record['position'] ?? 'No Position'}',
+              style: const TextStyle(color: Colors.white70),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              '📞 ${record['phone'] ?? 'No Phone'}',
+              style: const TextStyle(color: Colors.white70),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              '💰 PKR ${record['salary']?.toStringAsFixed(2) ?? '0.00'}',
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              '📅 Joined: ${record['joiningDate'] ?? 'Not specified'}',
+              style: const TextStyle(color: Colors.white70, fontSize: 12),
+            ),
+          ],
+        ),
+        trailing: PopupMenuButton<String>(
+          icon: const Icon(Icons.more_vert, color: Colors.white),
+          color: _primaryColor,
+          onSelected: (value) {
+            if (value == 'edit') {
+              _showEmployeeDialog(record: record, index: index);
+            } else if (value == 'delete') {
+              _deleteEmployee(record, index);
+            }
+          },
+          itemBuilder: (context) => [
+            const PopupMenuItem(
+              value: 'edit',
+              child: Row(
+                children: [
+                  Icon(Icons.edit, color: Colors.white, size: 20),
+                  SizedBox(width: 8),
+                  Text('Edit', style: TextStyle(color: Colors.white)),
+                ],
+              ),
+            ),
+            const PopupMenuItem(
+              value: 'delete',
+              child: Row(
+                children: [
+                  Icon(Icons.delete, color: Colors.redAccent, size: 20),
+                  SizedBox(width: 8),
+                  Text('Delete', style: TextStyle(color: Colors.redAccent)),
+                ],
+              ),
+            ),
           ],
         ),
         onTap: () => _showEmployeeDialog(record: record, index: index),
@@ -240,41 +526,203 @@ class _HRScreenState extends State<HRScreen> {
     );
   }
 
+  // ==================== UTILITY METHODS ====================
+  void _showErrorSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: _errorColor,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+      ),
+    );
+  }
+
+  void _showSuccessSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: _successColor,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+      ),
+    );
+  }
+
+  Future<bool> _showConfirmationDialog({
+    required String title,
+    required String message,
+    required String confirmText,
+    required Color confirmColor,
+  }) async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: _primaryColor,
+        title: Text(
+          title,
+          style: const TextStyle(color: Colors.white),
+        ),
+        content: Text(
+          message,
+          style: const TextStyle(color: Colors.white70),
+        ),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: _accentColor.withOpacity(0.3)),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: Colors.white70),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: confirmColor,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: Text(confirmText),
+          ),
+        ],
+      ),
+    );
+
+    return result ?? false;
+  }
+
+  // ==================== BUILD METHOD ====================
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: primary,
+      backgroundColor: _primaryColor,
       appBar: AppBar(
-        backgroundColor: primary,
-        title: const Text('👨‍💼 HR Management', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        backgroundColor: _primaryColor,
+        title: const Text(
+          '👨‍💼 HR Management',
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        centerTitle: true,
         elevation: 0,
         actions: [
+          // Fixed Salary Button
           IconButton(
             icon: const Icon(Icons.attach_money, color: Colors.white),
             onPressed: () {
-              Navigator.push(context, MaterialPageRoute(builder: (_) => SalaryScreen(employees: employees, currentUserId: '',)));
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => SalaryScreen(
+                    useFirebase: _useFirebase,
+                    currentUserId: widget.currentUserId,
+                  ),
+                ),
+              );
             },
+            tooltip: 'Salary Calculation',
           ),
+          const SizedBox(width: 8),
           Row(
             children: [
-              const Text("💾", style: TextStyle(color: Colors.white)),
-              Switch(value: useFirebase, onChanged: (v) { setState(() => useFirebase = v); _loadEmployees(); }, activeColor: Colors.white),
-              const Text("☁️", style: TextStyle(color: Colors.white)),
+              const Text(
+                "💾",
+                style: TextStyle(fontSize: 18),
+              ),
+              const SizedBox(width: 4),
+              Switch(
+                value: _useFirebase,
+                onChanged: (value) {
+                  setState(() => _useFirebase = value);
+                  _loadEmployees();
+                },
+                activeColor: Colors.white,
+                activeTrackColor: _accentColor,
+                inactiveThumbColor: Colors.grey,
+                inactiveTrackColor: Colors.grey.withOpacity(0.5),
+              ),
+              const SizedBox(width: 4),
+              const Text(
+                "☁️",
+                style: TextStyle(fontSize: 18),
+              ),
               const SizedBox(width: 8),
             ],
-          )
+          ),
         ],
       ),
-      body: isLoading
-          ? const Center(child: CircularProgressIndicator(color: Colors.white))
-          : employees.isEmpty
-          ? const Center(child: Text("No employees added.", style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold)))
-          : ListView.builder(padding: const EdgeInsets.all(16), itemCount: employees.length, itemBuilder: (_, i) => _employeeCard(employees[i], i)),
+      body: _isLoading
+          ? const Center(
+        child: CircularProgressIndicator(
+          color: Colors.white,
+          strokeWidth: 2,
+        ),
+      )
+          : _employees.isEmpty
+          ? Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.people_outline,
+              color: Colors.white.withOpacity(0.3),
+              size: 80,
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              "No employees found",
+              style: TextStyle(
+                color: Colors.white70,
+                fontSize: 18,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _useFirebase ? 'Cloud storage' : 'Local storage',
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.5),
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ),
+      )
+          : RefreshIndicator(
+        color: _accentColor,
+        backgroundColor: _primaryColor,
+        onRefresh: _loadEmployees,
+        child: ListView.separated(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          itemCount: _employees.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 8),
+          itemBuilder: (_, index) => _buildEmployeeCard(
+            _employees[index],
+            index,
+          ),
+        ),
+      ),
       floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: accent,
-        icon: const Icon(Icons.add, color: Colors.white),
-        label: const Text("Add Employee", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         onPressed: () => _showEmployeeDialog(),
+        backgroundColor: _accentColor,
+        foregroundColor: Colors.white,
+        icon: const Icon(Icons.add),
+        label: const Text('Add Employee'),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        elevation: 4,
       ),
     );
   }

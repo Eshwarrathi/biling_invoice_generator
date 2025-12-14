@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../services/Auth_servies.dart';
 import 'register_screens.dart';
 import 'home_screens.dart';
@@ -40,6 +41,38 @@ class _LoginScreenState extends State<LoginScreen> {
       );
 
       if (cred?.user != null) {
+        // ✅ Check if email is verified (optional - you can enable/disable)
+        if (!cred!.user!.emailVerified) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('⚠️ Email not verified'),
+                  SizedBox(height: 5),
+                  Text('Please check your email for verification link.', style: TextStyle(fontSize: 12)),
+                ],
+              ),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 4),
+              action: SnackBarAction(
+                label: 'Resend',
+                onPressed: () {
+                  cred.user?.sendEmailVerification();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('📧 Verification email sent!'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                },
+              ),
+            ),
+          );
+          setState(() => isLoading = false);
+          return;
+        }
+
         final role = await authServices.getCurrentUserRole() ?? 'user';
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -48,9 +81,11 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
         );
 
-        Navigator.pushReplacement(
+        // ✅ Use named route for navigation
+        Navigator.pushReplacementNamed(
           context,
-          MaterialPageRoute(builder: (_) => HomeScreen(role: role)),
+          '/home',
+          arguments: {'role': role},
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -60,6 +95,28 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
         );
       }
+    } on FirebaseAuthException catch (e) {
+      String errorMessage = 'Login Failed';
+      if (e.code == 'user-not-found') {
+        errorMessage = 'No user found with this email';
+      } else if (e.code == 'wrong-password') {
+        errorMessage = 'Wrong password';
+      } else if (e.code == 'invalid-credential') {
+        errorMessage = 'Invalid email or password';
+      } else if (e.code == 'too-many-requests') {
+        errorMessage = 'Too many attempts. Try again later';
+      } else if (e.code == 'user-disabled') {
+        errorMessage = 'Account has been disabled';
+      } else if (e.code == 'network-request-failed') {
+        errorMessage = 'Network error. Check your connection';
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('❌ $errorMessage'),
+          backgroundColor: Colors.red,
+        ),
+      );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -200,6 +257,26 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 const SizedBox(height: 20),
 
+// Forgot Password button پر
+                TextButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const ForgetPasswordScreen()),
+                    );
+                  },
+                  child: Text(
+                    "Forgot Password?",
+                    style: TextStyle(
+                      color: accent,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 10),
+
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
@@ -209,10 +286,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     TextButton(
                       onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (_) => const RegisterScreen()),
-                        );
+                        Navigator.pushReplacementNamed(context, '/register');
                       },
                       child: Text(
                         "Register",

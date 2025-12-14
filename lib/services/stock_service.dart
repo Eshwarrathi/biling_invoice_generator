@@ -2,52 +2,115 @@ import 'firestore_servicves.dart';
 import 'local_db_service.dart';
 
 class StockService {
-  // Added optional parameters
-  static Future<List<Map<String, dynamic>>> calculateStock({bool useFirebase = true, String? userId}) async {
-    // Fetch purchase records
-    final purchases = useFirebase
-        ? await FirebaseService.getAllRecords('purchases')
-        : LocalDBService.getAllRecords('purchases').map((e) => Map<String, dynamic>.from(e)).toList();
+  static Future<List<Map<String, dynamic>>> calculateStock({
+    bool useFirebase = true,
+    required String userId,
+  }) async {
+    try {
+      List<Map<String, dynamic>> purchases = [];
+      List<Map<String, dynamic>> sales = [];
 
-    // Fetch sales records
-    final sales = useFirebase
-        ? await FirebaseService.getAllRecords('sales')
-        : LocalDBService.getAllRecords('sales').map((e) => Map<String, dynamic>.from(e)).toList();
+      if (useFirebase) {
+        // ✅ Firebase سے صرف current user کا ڈیٹا لوڈ کریں
+        purchases = await FirebaseService.getAllRecords('purchases');
+        sales = await FirebaseService.getAllRecords('sales');
 
-    // Filter by current user if userId provided
-    final filteredPurchases = userId == null ? purchases : purchases.where((p) => p['userId'] == userId).toList();
-    final filteredSales = userId == null ? sales : sales.where((s) => s['userId'] == userId).toList();
+        // Filter by user ID
+        purchases = purchases.where((p) => p['userId'] == userId).toList();
+        sales = sales.where((s) => s['userId'] == userId).toList();
+      } else {
+        // ✅ Hive سے ڈیٹا لوڈ کریں
+        final purchasesBox = LocalDBService.getAllRecords('purchases');
+        final salesBox = LocalDBService.getAllRecords('sales');
 
-    Map<String, int> purchaseMap = {};
-    Map<String, int> saleMap = {};
+        purchases = purchasesBox
+            .where((item) => item['userId'] == userId)
+            .map((item) => Map<String, dynamic>.from(item))
+            .toList();
 
-    for (var p in filteredPurchases) {
-      final item = p['item'];
-      final qty = int.tryParse(p['quantity'] ?? '0') ?? 0;
-      purchaseMap[item] = (purchaseMap[item] ?? 0) + qty;
+        sales = salesBox
+            .where((item) => item['userId'] == userId)
+            .map((item) => Map<String, dynamic>.from(item))
+            .toList();
+      }
+
+      // Stock calculation logic
+      Map<String, Map<String, int>> stockMap = {};
+
+      // Add purchases
+      for (var purchase in purchases) {
+        final item = purchase['item']?.toString() ?? '';
+        final quantity = int.tryParse(purchase['quantity']?.toString() ?? '0') ?? 0;
+
+        if (!stockMap.containsKey(item)) {
+          stockMap[item] = {'purchased': 0, 'sold': 0, 'remaining': 0};
+        }
+        stockMap[item]!['purchased'] = stockMap[item]!['purchased']! + quantity;
+        stockMap[item]!['remaining'] = stockMap[item]!['remaining']! + quantity;
+      }
+
+      // Subtract sales
+      for (var sale in sales) {
+        final item = sale['item']?.toString() ?? '';
+        final quantity = int.tryParse(sale['quantity']?.toString() ?? '0') ?? 0;
+
+        if (stockMap.containsKey(item)) {
+          stockMap[item]!['sold'] = stockMap[item]!['sold']! + quantity;
+          stockMap[item]!['remaining'] = stockMap[item]!['remaining']! - quantity;
+        } else {
+          // If item sold but never purchased
+          stockMap[item] = {'purchased': 0, 'sold': quantity, 'remaining': -quantity};
+        }
+      }
+
+      // Convert to list
+      List<Map<String, dynamic>> stockList = [];
+
+      for (var entry in stockMap.entries) {
+        final item = entry.key;
+        final purchased = entry.value['purchased'] ?? 0;
+        final sold = entry.value['sold'] ?? 0;
+        final remaining = entry.value['remaining'] ?? 0;
+
+        stockList.add({
+          'item': item,
+          'purchased': purchased,
+          'sold': sold,
+          'remaining': remaining,
+        });
+      }
+
+      // Sort by item name
+      stockList.sort((a, b) => (a['item'] ?? '').compareTo(b['item'] ?? ''));
+
+      return stockList;
+    } catch (e) {
+      print('❌ Error calculating stock: $e');
+      return [];
     }
+  }
 
-    for (var s in filteredSales) {
-      final item = s['item'];
-      final qty = int.tryParse(s['quantity'] ?? '0') ?? 0;
-      saleMap[item] = (saleMap[item] ?? 0) + qty;
-    }
+  // ✅ Additional method to get low stock items
+  static Future<List<Map<String, dynamic>>> getLowStock({
+    bool useFirebase = true,
+    required String userId,
+    int threshold = 5,
+  }) async {
+    final allStock = await calculateStock(useFirebase: useFirebase, userId: userId);
+    return allStock.where((item) => (item['remaining'] ?? 0) <= threshold).toList();
+  }
 
-    List<Map<String, dynamic>> stockList = [];
-
-    for (var item in purchaseMap.keys) {
-      final purchased = purchaseMap[item] ?? 0;
-      final sold = saleMap[item] ?? 0;
-      final remaining = purchased - sold;
-
-      stockList.add({
-        'item': item,
-        'purchased': purchased,
-        'sold': sold,
-        'remaining': remaining,
-      });
-    }
-
-    return stockList;
+  // ✅ Method to check specific item stock
+  static Future<int> getItemStock({
+    bool useFirebase = true,
+    required String userId,
+    required String itemName,
+  }) async {
+    final allStock = await calculateStock(useFirebase: useFirebase, userId: userId);
+    final item = allStock.firstWhere(
+          (stock) => (stock['item'] ?? '').toLowerCase() == itemName.toLowerCase(),
+      orElse: () => {'remaining': 0},
+    );
+    return item['remaining'] ?? 0;
   }
 }
